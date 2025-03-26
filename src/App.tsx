@@ -13,17 +13,39 @@ export function App() {
   const { data: paginatedTransactions, ...paginatedTransactionsUtils } = usePaginatedTransactions()
   const { data: transactionsByEmployee, ...transactionsByEmployeeUtils } = useTransactionsByEmployee()
   const [isLoading, setIsLoading] = useState(false)
+  const [approvals, setApprovals] = useState<Record<string, boolean>>({})
 
-  const transactions = useMemo(
-    () => paginatedTransactions?.data ?? transactionsByEmployee ?? null,
-    [paginatedTransactions, transactionsByEmployee]
-  )
+  const updateApprovalOverride = (transactionId: string, newValue: boolean) => {
+    setApprovals(() => ({
+      ...approvals,
+      [transactionId]: newValue,
+    }))
+  }
+
+  const transactions = useMemo(() => {
+      if (paginatedTransactions?.data && paginatedTransactions.data.length > 0) {
+        return paginatedTransactions.data
+      } else if (transactionsByEmployee && transactionsByEmployee.length > 0) {
+        return transactionsByEmployee
+      } else {
+        return null
+      }
+    }, [paginatedTransactions, transactionsByEmployee])
+
+  const transactionsWO = useMemo(() => {
+    if (!transactions) return null
+    return transactions.map((txn) => ({
+      ...txn,
+      approved: approvals[txn.id] ?? txn.approved,
+    }))
+  }, [transactions, approvals])
 
   const loadAllTransactions = useCallback(async () => {
     setIsLoading(true)
     transactionsByEmployeeUtils.invalidateData()
-
-    await employeeUtils.fetchAll()
+    if (employees === null || employees.length === 0) {
+      await employeeUtils.fetchAll()
+    }
     await paginatedTransactionsUtils.fetchAll()
 
     setIsLoading(false)
@@ -64,17 +86,18 @@ export function App() {
             if (newValue === null) {
               return
             }
-
-            await loadTransactionsByEmployee(newValue.id)
+            if (newValue.id === "") {
+              await loadAllTransactions()
+            } else await loadTransactionsByEmployee(newValue.id)
           }}
         />
 
         <div className="RampBreak--l" />
 
         <div className="RampGrid">
-          <Transactions transactions={transactions} />
+          <Transactions transactions={transactionsWO} updateApprovalOverride={updateApprovalOverride} />
 
-          {transactions !== null && (
+          {paginatedTransactions?.data && paginatedTransactions.nextPage !== null && (
             <button
               className="RampButton"
               disabled={paginatedTransactionsUtils.loading}
